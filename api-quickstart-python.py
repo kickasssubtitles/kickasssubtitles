@@ -6,34 +6,34 @@ import requests
 import time
 import base64
 
-def opensubtitles_hash(filename):
-    try:
-        longlongformat = '<q'  # little-endian long long
-        bytesize = struct.calcsize(longlongformat)
-        filesize = os.path.getsize(filename)
-        hash = filesize
+def hash_opensubtitles(video_path):
+    """Compute a hash using OpenSubtitles' algorithm.
 
+    :param str video_path: path of the video.
+    :return: the hash.
+    :rtype: str
+
+    """
+    bytesize = struct.calcsize(b'<q')
+    with open(video_path, 'rb') as f:
+        filesize = os.path.getsize(video_path)
+        filehash = filesize
         if filesize < 65536 * 2:
-            raise ValueError("File size is too small for this hash algorithm.")
+            return
+        for _ in range(65536 // bytesize):
+            filebuffer = f.read(bytesize)
+            (l_value,) = struct.unpack(b'<q', filebuffer)
+            filehash += l_value
+            filehash &= 0xFFFFFFFFFFFFFFFF  # to remain as 64bit number
+        f.seek(max(0, filesize - 65536), 0)
+        for _ in range(65536 // bytesize):
+            filebuffer = f.read(bytesize)
+            (l_value,) = struct.unpack(b'<q', filebuffer)
+            filehash += l_value
+            filehash &= 0xFFFFFFFFFFFFFFFF
+    returnedhash = '%016x' % filehash
 
-        with open(filename, 'rb') as f:
-            for _ in range(65536 // bytesize):
-                buffer = f.read(bytesize)
-                (l_value,) = struct.unpack(longlongformat, buffer)
-                hash += l_value
-                hash = hash & 0xFFFFFFFFFFFFFFFF  # to remain as 64bit number
-
-            f.seek(max(0, filesize - 65536), 0)
-            for _ in range(65536 // bytesize):
-                buffer = f.read(bytesize)
-                (l_value,) = struct.unpack(longlongformat, buffer)
-                hash += l_value
-                hash = hash & 0xFFFFFFFFFFFFFFFF
-
-        return "{:016x}".format(hash)
-    except Exception as e:
-        print(f"An error occurred: {e}")
-        return None
+    return returnedhash
 
 def user_endpoint_example():
     print("[/api/user] endpoint example")
@@ -53,7 +53,7 @@ def upload_endpoint_example():
     payload = {
         "filename": "Some.Movie.2006.1080p.BluRay.x264.mp4",
         "filesize": os.path.getsize("Some.Movie.2006.1080p.BluRay.x264.mp4"),
-        "hashes[opensubtitles]": opensubtitles_hash("Some.Movie.2006.1080p.BluRay.x264.mp4"),
+        "hashes[opensubtitles]": hash_opensubtitles("Some.Movie.2006.1080p.BluRay.x264.mp4"),
         "imdb_url": "https://www.imdb.com/title/tt0389557/",
         "language": "pl"
     }
@@ -72,10 +72,10 @@ def search_endpoint_example():
     payload = {
         "filename": "Some.Movie.2006.1080p.BluRay.x264.mp4",
         "filesize": os.path.getsize("Some.Movie.2006.1080p.BluRay.x264.mp4"),
-        "hashes[opensubtitles]": opensubtitles_hash("Some.Movie.2006.1080p.BluRay.x264.mp4"),
-        "language": "pl",
-        "encoding": "UTF-8", # optional
-        "format": "subrip" # optional
+        "hashes[opensubtitles]": hash_opensubtitles("Some.Movie.2006.1080p.BluRay.x264.mp4"),
+        "language": "pl", # optional - defaults to "en"
+        "encoding": "UTF-8", # optional - defaults to "UTF-8"
+        "format": "subrip" # optional - defaults to "subrip"
     }
     response = requests.request("POST", "https://kickasssubtitles.com/api/search", headers=headers, data=payload)
     task = response.json()
@@ -102,8 +102,8 @@ def convert_endpoint_example():
     payload = {
         "language": "pl", # optional
         "input_encoding": "UTF-8", # optional
-        "encoding": "UTF-8",
-        "format": "webvtt",
+        "encoding": "UTF-8", # optional - defaults to "UTF-8"
+        "format": "webvtt", # optional - defaults to "subrip"
         "fps": None # optional
     }
     files = [
